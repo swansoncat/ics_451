@@ -35,6 +35,14 @@ int main(int argc, char *argv[])
 	int connection_status = connect(network_socket, (struct sockaddr *) &server_address, sizeof(server_address));
 	
 	
+	struct sockaddr_in client_address;
+	int client_size = sizeof(client_address);
+	getsockname(network_socket, (struct sockaddr *) &client_address, &client_size);
+	struct tcpheader syn;
+	syn.destPort = 45000;
+	
+	int clientAdd = ntohs(client_address.sin_port);
+	printf("The client port is: %d\n", clientAdd);
 	
 	if (connection_status == -1) 
 	{
