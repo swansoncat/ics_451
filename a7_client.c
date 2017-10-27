@@ -39,16 +39,51 @@ int main(int argc, char *argv[])
 	int client_size = sizeof(client_address);
 	getsockname(network_socket, (struct sockaddr *) &client_address, &client_size);
 	struct tcpheader syn;
-	syn.destPort = 45000;
+	syn.sourcePort = (unsigned short) ntohs(client_address.sin_port);
+	syn.destPort = (unsigned short) 45000;
+	syn.seqNo = (unsigned int) rand() % 10001;
+	syn.ackNo = (unsigned int) 7777;
+	syn.dataOffset = (unsigned char) 0;//has to be combined with reserved using a bitwise shift or somethin
+	syn.reserved = (unsigned char) 0;//has to be combined with data offset using a bitwise shift or something
+	syn.controlFlags = (unsigned char) 2;
+	syn.window = (unsigned short) 65535;
+	syn.checksum = (unsigned short) 65535;
+	syn.urgentP = (unsigned short) 9999;
+	
 	
 	int clientAdd = ntohs(client_address.sin_port);
-	printf("The client port is: %d\n", clientAdd);
+	printf("The client port is: %u\n", syn.sourcePort);
+	printf("The sequence is: %u\n", syn.seqNo);
 	
 	if (connection_status == -1) 
 	{
 		printf("There an a error connecting to the server.\n");
 	}
 
+	
+	//This huge block puts the data from the TCP header into a hexadecimal string.
+	char data[160];	
+	int stringOffset = sizeof(syn.sourcePort);
+	sprintf(data, "%x" , syn.sourcePort);
+	sprintf(data+stringOffset, "%x" , syn.destPort);
+	stringOffset = stringOffset + sizeof(syn.destPort);	
+	sprintf(data+stringOffset, "%x" , syn.seqNo);	
+	stringOffset = stringOffset + sizeof(syn.seqNo);	
+	sprintf(data+stringOffset, "%x" , syn.ackNo);
+	stringOffset = stringOffset + sizeof(syn.ackNo);
+	sprintf(data+stringOffset, "%x" , syn.dataOffset);//this would be a combined dataOffset and reserved, 
+	stringOffset = stringOffset + sizeof(syn.dataOffset);
+	sprintf(data+stringOffset, "%x" , syn.controlFlags);
+	stringOffset = stringOffset + sizeof(syn.controlFlags);
+	sprintf(data+stringOffset, "%x" , syn.window);
+	stringOffset = stringOffset + sizeof(syn.window);
+	sprintf(data+stringOffset, "%x" , syn.checksum);
+	stringOffset = stringOffset + sizeof(syn.checksum);
+	sprintf(data+stringOffset, "%x" , syn.urgentP);
+	
+	send(network_socket, data, sizeof(data), 0);
+
+	
 	/************************************************/
 	/* Current State: Syn sent
 	/* Event: Received syn ack, sent ack

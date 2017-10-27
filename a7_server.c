@@ -34,6 +34,8 @@ int main(int argc, char *argv[])
 	server_address.sin_addr.s_addr = INADDR_ANY;
 	//inet_aton("128.171.24.203", server_address.sin_addr);
 	
+
+	
 	/************************************************/
 	/* Current State: Closed
 	/* Event: Passive open, set up socket, buffer
@@ -60,8 +62,17 @@ int main(int argc, char *argv[])
 	client_socket = accept(server_socket, (struct sockaddr *) &client_address, &client_length);
 	
 	int clientAdd = ntohs(client_address.sin_port);
-	int kalen = 5;
 	printf("The client port is: %d\n", clientAdd);
+	//unsigned int clientSeq, clientAck;
+	char clientSeq[160];
+
+	recv(client_socket, clientSeq, sizeof(clientSeq), 0);
+	//recv(client_socket, &clientAck, sizeof(clientAck), 0);
+	//recv(client_socket, &clientAck, sizeof(clientAck), 0);
+	printf("The client sequence number is: %s\n", clientSeq);
+	//printf("The client sequence number is: %u\n", *(&clientSeq-2));
+	//printf("The client sequence number is: %u\n", clientAck);
+	//printf("The client acknowledgement number is: %u\n", clientAck);
 		
 	/************************************************/
 	/* Current State: Syn received
