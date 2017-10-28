@@ -1,12 +1,17 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<time.h>
+#include<string.h>
 #include "tcpheader.h"
 
 #include<sys/types.h>
 #include<sys/socket.h>
 #include<netinet/in.h>
 #include <arpa/inet.h>
+
+void receivedPacket(struct tcpheader*);
+void sentPacket(struct tcpheader*);
+void responsePacket(struct tcpheader*, struct tcpheader*, unsigned int, unsigned char);
 
 //This program was created through the guidance of the youtube video "Socket Programming Tutorial in C for Beginners, parts 1 & 2" by Eduonix Learning Solutions and
 //various posts on StackOverflow.com
@@ -16,6 +21,7 @@ int main(int argc, char *argv[])
 	//takes the data from there and puts it into a struct tm. tm is a struct that holds a bunch of ints corresponding to minutes, hours, days, etc.
 	//strftime is a function that takes the time data from a pointer to a struct tm, formats it, and stores it into a char array.
 	time_t t = time(NULL);
+	srand(time(NULL));
 	struct tm *tm = localtime(&t);	
 	char s[256]; //Note to self: for some reason, this does not work if the array is set to 64. 
 	strftime(s, sizeof(s), "%c", tm);
@@ -44,7 +50,8 @@ int main(int argc, char *argv[])
 	//This is the equivalent of the connect function call on client program.
 	bind(server_socket, (struct sockaddr*) &server_address, sizeof(server_address));
 	listen(server_socket, 5);
-
+	printf("Waiting for connections...\n\n");
+	
 	int client_socket;
 	
 		
@@ -61,25 +68,33 @@ int main(int argc, char *argv[])
 	//Below has been modified for assignment 7
 	client_socket = accept(server_socket, (struct sockaddr *) &client_address, &client_length);
 	
+	
+	/*Used this while trying to figure out how to get client port. Don't want to delete in case need to look at again.
+	 *
 	int clientAdd = ntohs(client_address.sin_port);
 	printf("The client port is: %d\n", clientAdd);
-	//unsigned int clientSeq, clientAck;
-	char clientSeq[160];
+	*/
+	
+	struct tcpheader received, toBeSent, ackReceived;
+	struct tcpheader *a = &received;
 
-	recv(client_socket, clientSeq, sizeof(clientSeq), 0);
-	//recv(client_socket, &clientAck, sizeof(clientAck), 0);
-	//recv(client_socket, &clientAck, sizeof(clientAck), 0);
-	printf("The client sequence number is: %s\n", clientSeq);
-	//printf("The client sequence number is: %u\n", *(&clientSeq-2));
-	//printf("The client sequence number is: %u\n", clientAck);
-	//printf("The client acknowledgement number is: %u\n", clientAck);
+	recv(client_socket, a, sizeof(received), 0);
+	printf("%d\n", received.destPort);
+
+	
+	receivedPacket(a);
+	responsePacket(a, &toBeSent, rand() % 10001, (unsigned char) 10);
+	sentPacket(&toBeSent);
+
 		
 	/************************************************/
 	/* Current State: Syn received
 	/* Event: Received ack
 	/* New State: Established
 	/************************************************/
-	send(client_socket, s, sizeof(s), 0);
+	send(client_socket, &toBeSent, sizeof(toBeSent), 0);
+	recv(client_socket, &ackReceived, sizeof(ackReceived), 0);
+	receivedPacket(&ackReceived);
 	//puts(s);
 	
 	/************************************************/
@@ -95,4 +110,48 @@ int main(int argc, char *argv[])
 	/* New State: Closed
 	/************************************************/
 	return 0;
+}
+
+void receivedPacket(struct tcpheader *packet)
+{
+	printf("Received a tcp packet with these header fields.\n");
+	printf("Source port: %u\n", (*packet).sourcePort);
+	printf("Destination port: %u\n", (*packet).destPort);
+	printf("Sequence number: %u\n", (*packet).seqNo);
+	printf("Acknowledgement number: %u\n", (*packet).ackNo);
+	printf("Data offset: %u\n", (*packet).dataOffset);
+	printf("Reserved: %u\n", (*packet).reserved);
+	printf("Control flags: %u\n", (*packet).controlFlags);
+	printf("Window: %u\n", (*packet).window);
+	printf("Checksum: %u\n", (*packet).checksum);
+	printf("Urgent pointer: %u\n\n", (*packet).urgentP);
+}
+
+void sentPacket(struct tcpheader *packet)
+{
+	printf("Sent a tcp packet with these header fields.\n");
+	printf("Source port: %u\n", (*packet).sourcePort);
+	printf("Destination port: %u\n", (*packet).destPort);
+	printf("Sequence number: %u\n", (*packet).seqNo);
+	printf("Acknowledgement number: %u\n", (*packet).ackNo);
+	printf("Data offset: %u\n", (*packet).dataOffset);
+	printf("Reserved: %u\n", (*packet).reserved);
+	printf("Control flags: %u\n", (*packet).controlFlags);
+	printf("Window: %u\n", (*packet).window);
+	printf("Checksum: %u\n", (*packet).checksum);
+	printf("Urgent pointer: %u\n\n", (*packet).urgentP);
+}
+
+void responsePacket(struct tcpheader *original, struct tcpheader *response, unsigned int seq, unsigned char flagz)
+{
+	(*response).sourcePort = (*original).destPort;
+	(*response).destPort = (*original).sourcePort;
+	(*response).seqNo = seq;
+	(*response).ackNo = (*original).seqNo;
+	(*response).dataOffset = (unsigned char) 0;
+	(*response).reserved = (unsigned char) 0;
+	(*response).controlFlags = flagz;
+	(*response).window = (unsigned short) 65535;
+	(*response).checksum = (unsigned short) 65535;
+	(*response).urgentP = (unsigned short) 0;
 }
