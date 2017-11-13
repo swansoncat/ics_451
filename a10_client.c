@@ -69,8 +69,19 @@ int main(int argc, char *argv[])
 	}	
 	
 	
+	//End TCP handshake
 	
+	FILE *newJPG;
+	newJPG = fopen("new.jpg", "w");
+	char buffer[1500];
+
+	while (strcmp(buffer, "end") != 0)
+	{
+		read(network_socket, buffer, 1500);
+		fwrite(buffer,1,1500,newJPG);
+	}
 	
+	fclose(newJPG);
 	close(network_socket);
 	return 0;
 }

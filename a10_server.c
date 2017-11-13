@@ -74,6 +74,9 @@ int main(int argc, char *argv[])
 		perror("Error on accepting connection on server socket.");
 	}
 	
+	
+	//Begin TCP handshake section.
+	
 	struct tcpheader received, toBeSent, recvAck;
 	struct tcpheader *a = &received;
 	struct tcpheader *b = &recvAck;
@@ -85,10 +88,27 @@ int main(int argc, char *argv[])
 
 		
 	write(client_socket, &toBeSent, sizeof(toBeSent));
-	read(client_socket, b, sizeof(recvAck));
-	receivedPacket(b);
-
+	bzero(a, sizeof(received));
+	read(client_socket, a, sizeof(received));
+	receivedPacket(a);
 	
+	
+	//End TCP handshake section.
+	
+	
+	FILE *openJPG;
+	char buffer[1500];
+	openJPG = fopen("30_lol.jpg", "r");
+	while (fread(buffer,1,1500,openJPG) == 1500)
+	{
+		write(client_socket, buffer, 1500);
+	}
+	
+	char end[4] = "end";
+	write(client_socket,end,4);
+	
+
+	fclose(openJPG);
 	close(server_socket);
 	close(client_socket);
 	return 0;
