@@ -11,7 +11,7 @@
 
 void receivedPacket(struct tcpheader*);
 void sentPacket(struct tcpheader*);
-void responsePacket(struct tcpheader*, struct tcpheader*, unsigned int, unsigned char);
+void responsePacket(struct tcpheader*, struct tcpheader*, unsigned int, unsigned char, unsigned int);
 
 /* This server program is designed to take a filename as the first command line argument and a port number as a second.
  *
@@ -77,13 +77,13 @@ int main(int argc, char *argv[])
 	
 	//Begin TCP handshake section.
 	
-	struct tcpheader received, toBeSent, recvAck;
+	struct tcpheader received, toBeSent;
 	struct tcpheader *a = &received;
-	struct tcpheader *b = &recvAck;
+	struct tcpheader *b = &toBeSent;
 
 	read(client_socket, a, sizeof(received));	
 	receivedPacket(a);
-	responsePacket(a, &toBeSent, rand() % 10001, (unsigned char) 10);
+	responsePacket(a, &toBeSent, rand() % 10001, (unsigned char) 10, (unsigned int) 0);
 	sentPacket(&toBeSent);
 
 		
@@ -96,14 +96,41 @@ int main(int argc, char *argv[])
 	//End TCP handshake section.
 	
 	
+	
+	/*
+	 *
+	 *
+	 * Notes of interest to self...
+	 * -originally we had the while condition as "(fread(buffer,1,1500,openJPG) == 1500)" and it looked like the program was working ok,
+	 * as the new.jpg was readable and looked exactly like the original bday_pic.jpg after transfer, but logically the server wouldn't have
+	 * written the last part of the binary data as the fread() function would of returned something less than 1500 except in the unlikely 
+	 * occassion the very last section of data to read was exactly 1500 bytes. Using a sha256 digest of the old and new file proved that
+	 * although they looked the same they weren't (openssl dgst -sha256 filename.jpg). Regardless though, even after correcting for what
+	 * should have been the missing end of the file the hash was still different.
+	 */
 	FILE *openJPG;
 	char buffer[1500];
-	openJPG = fopen("30_lol.jpg", "r");
-	while (fread(buffer,1,1500,openJPG) == 1500)
+	openJPG = fopen("bday_pic.jpg", "r");
+	unsigned int seqNew = (*b).seqNo;
+	unsigned int readInput = fread(buffer,1,1500,openJPG);
+	while (readInput > 0)
 	{
-		write(client_socket, buffer, 1500);
+		write(client_socket, buffer, readInput);
+		bzero(b, sizeof(toBeSent));
+		responsePacket(a, &toBeSent, seqNew, (unsigned char) 2, (unsigned int) 0);
+		sentPacket(&toBeSent);
+		write(client_socket, &toBeSent, sizeof(toBeSent));
+		seqNew = seqNew + readInput;
+		bzero(a, sizeof(received));
+		read(client_socket, a, sizeof(received));
+		while ((*a).ackNo != seqNew)
+		{
+			//This literally does nothing, only exists to loop until it receives an ack that is expects
+		}
+		receivedPacket(a);
+		readInput = fread(buffer,1,1500,openJPG);
+		
 	}
-	
 	char end[4] = "end";
 	write(client_socket,end,4);
 	
@@ -144,16 +171,16 @@ void sentPacket(struct tcpheader *packet)
 	printf("Urgent pointer: %u\n\n", (*packet).urgentP);
 }
 
-void responsePacket(struct tcpheader *original, struct tcpheader *response, unsigned int seq, unsigned char flagz)
+void responsePacket(struct tcpheader *original, struct tcpheader *response, unsigned int seq, unsigned char flagz, unsigned int ackMod)
 {
 	(*response).sourcePort = (*original).destPort;
 	(*response).destPort = (*original).sourcePort;
 	(*response).seqNo = seq;
-	(*response).ackNo = (*original).seqNo;
+	(*response).ackNo = (*original).seqNo + ackMod;
 	(*response).dataOffset = (unsigned char) 0;
 	(*response).reserved = (unsigned char) 0;
 	(*response).controlFlags = flagz;
-	(*response).window = (unsigned short) 65535;
+	(*response).window = (unsigned short) 1500;
 	(*response).checksum = (unsigned short) 65535;
 	(*response).urgentP = (unsigned short) 0;
 }

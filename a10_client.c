@@ -10,7 +10,7 @@
 
 void receivedPacket(struct tcpheader*);
 void sentPacket(struct tcpheader*);
-void responsePacket(struct tcpheader*, struct tcpheader*, unsigned int, unsigned char);
+void responsePacket(struct tcpheader*, struct tcpheader*, unsigned int, unsigned char, unsigned int);
 
 //This program was created through the guidance of the youtube video "Socket Programming Tutorial in C for Beginners, parts 1 & 2" by Eduonix Learning Solutions and 
 //user posts on StackOverflow.
@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 		printf("There an a error connecting to the server.\n");
 	}
 
-
+	//Begin TCP handshake
 	
 	write(network_socket, &syn, sizeof(syn));
 	sentPacket(&syn);
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 	{	
 		read(network_socket, &response, sizeof(response));
 		receivedPacket(&response);
-		responsePacket(&response, &ack, syn.seqNo, (unsigned char) 8);
+		responsePacket(&response, &ack, syn.seqNo, (unsigned char) 8, (unsigned int) 0);
 		write(network_socket, &ack, sizeof(ack));
 		sentPacket(&ack);
 	}	
@@ -74,12 +74,23 @@ int main(int argc, char *argv[])
 	FILE *newJPG;
 	newJPG = fopen("new.jpg", "w");
 	char buffer[1500];
-
+	unsigned int seqNew = response.seqNo;
+	bzero(&response, sizeof(response));
+	bzero(&ack, sizeof(ack));
+	unsigned int readSize = read(network_socket, buffer, 1500);
 	while (strcmp(buffer, "end") != 0)
 	{
-		read(network_socket, buffer, 1500);
 		fwrite(buffer,1,1500,newJPG);
+		read(network_socket, &response, sizeof(response));	
+		receivedPacket(&response);
+		responsePacket(&response, &ack, seqNew, (unsigned char) 2, readSize);
+		write(network_socket, &ack, sizeof(ack));
+		sentPacket(&ack);
+		readSize = read(network_socket, buffer, 1500);		
 	}
+	printf("%s\n",buffer);
+	
+
 	
 	fclose(newJPG);
 	close(network_socket);
@@ -116,16 +127,16 @@ void sentPacket(struct tcpheader *packet)
 	printf("Urgent pointer: %u\n\n", (*packet).urgentP);
 }
 
-void responsePacket(struct tcpheader *original, struct tcpheader *response, unsigned int seq, unsigned char flagz)
+void responsePacket(struct tcpheader *original, struct tcpheader *response, unsigned int seq, unsigned char flagz, unsigned int ackMod)
 {
 	(*response).sourcePort = (*original).destPort;
 	(*response).destPort = (*original).sourcePort;
 	(*response).seqNo = seq;
-	(*response).ackNo = (*original).seqNo;
+	(*response).ackNo = (*original).seqNo + ackMod;
 	(*response).dataOffset = (unsigned char) 0;
 	(*response).reserved = (unsigned char) 0;
 	(*response).controlFlags = flagz;
-	(*response).window = (unsigned short) 1346;
+	(*response).window = (unsigned short) 1500;
 	(*response).checksum = (unsigned short) 65535;
 	(*response).urgentP = (unsigned short) 0;
 }
