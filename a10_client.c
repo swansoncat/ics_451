@@ -12,17 +12,21 @@ void receivedPacket(struct tcpheader*);
 void sentPacket(struct tcpheader*);
 void responsePacket(struct tcpheader*, struct tcpheader*, unsigned int, unsigned char, unsigned int);
 
-//This program was created through the guidance of the youtube video "Socket Programming Tutorial in C for Beginners, parts 1 & 2" by Eduonix Learning Solutions and 
-//user posts on StackOverflow.
+//Port number can be given as command line argument.
 int main(int argc, char *argv[])
-{
+{	
 	srand(time(NULL));
 	int network_socket;
 	network_socket = socket(AF_INET, SOCK_STREAM, 0);
-
+	
+	int portNumber = 45000;
+	if (argc != 1)
+	{
+		portNumber = atoi(argv[0]);
+	}
 	struct sockaddr_in server_address;
 	server_address.sin_family = AF_INET;
-	server_address.sin_port = htons(45000);
+	server_address.sin_port = htons(portNumber);
 	server_address.sin_addr.s_addr = INADDR_ANY;
 	//inet_aton("128.171.24.203", &server_address.sin_addr);
 	
@@ -63,7 +67,7 @@ int main(int argc, char *argv[])
 	{	
 		read(network_socket, &response, sizeof(response));
 		receivedPacket(&response);
-		responsePacket(&response, &ack, syn.seqNo, (unsigned char) 8, (unsigned int) 0);
+		responsePacket(&response, &ack, syn.seqNo, (unsigned char) 16, (unsigned int) 0);
 		write(network_socket, &ack, sizeof(ack));
 		sentPacket(&ack);
 	}	
@@ -71,6 +75,22 @@ int main(int argc, char *argv[])
 	
 	//End TCP handshake
 	
+	
+	/* This section of the code deals with the transfer of th jpg file. The main loop runs until the server sends it a specific piee of data
+	 * indicating that it is done. As of currently it is looking for the string 'end' but this may be changed later. Before the loop starts it
+	 * first reads the first jpg binary data from the server. When the loop begins is writes this binary data out to the File, then it reads the
+	 * accompanying header to the data, and calls on some functions to print the information in the header it receives and the header it will send
+	 * and then it sends its acknowledgement. Lastly it reads the next data from the server which will be the next section of binary data for the jpg.
+	 * TLDR: read then write jpg data, read header, print header, create ack header, print ack header, sent ack header, repeat.
+	 *
+	 * -the sequence number is set to whatever the sequence number of the response set in the handshake was as there was no data sent. There
+	 * is no functionality in this loop to change the sequence number as the client never sends data.
+	 * -we clear the data in the tcp header structs 'response' and 'ack', the former being used to store the header sent by the server and
+	 * the latter being used to store the data to be sent in the ACK response. It isn't cleared after each iteration though so this may not
+	 * be necessary, but it was noticed that it was still working even though we didn't have it in the loop.
+	 *
+	 *
+	 */
 	FILE *newJPG;
 	newJPG = fopen("new.jpg", "w");
 	char buffer[1500];
@@ -80,16 +100,34 @@ int main(int argc, char *argv[])
 	unsigned int readSize = read(network_socket, buffer, 1500);
 	while (strcmp(buffer, "end") != 0)
 	{
-		fwrite(buffer,1,1500,newJPG);
+		fwrite(buffer,1,readSize,newJPG);
 		read(network_socket, &response, sizeof(response));	
 		receivedPacket(&response);
-		responsePacket(&response, &ack, seqNew, (unsigned char) 2, readSize);
+		responsePacket(&response, &ack, seqNew, (unsigned char) 16, readSize);
 		write(network_socket, &ack, sizeof(ack));
 		sentPacket(&ack);
 		readSize = read(network_socket, buffer, 1500);		
-	}
-	printf("%s\n",buffer);
+	}	
+	//End file transfer
+
 	
+	//Begin closing handshake	
+	bzero(&response, sizeof(response));
+	bzero(&ack, sizeof(ack));	
+	read(network_socket, &response, sizeof(response));	
+	while (response.controlFlags != 1)
+	{			
+		//This literally does nothing, only exists to loop until it receives an FIN
+	}
+	receivedPacket(&response);
+	bzero(&ack, sizeof(ack));
+	responsePacket(&response, &ack, seqNew, (unsigned char) 17, 0);
+	write(network_socket, &ack, sizeof(ack));
+	sentPacket(&ack);
+	bzero(&response, sizeof(response));
+	read(network_socket, &response, sizeof(response));
+	receivedPacket(&response);	
+	//End closing handshake.
 
 	
 	fclose(newJPG);

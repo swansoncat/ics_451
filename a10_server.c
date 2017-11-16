@@ -13,13 +13,13 @@ void receivedPacket(struct tcpheader*);
 void sentPacket(struct tcpheader*);
 void responsePacket(struct tcpheader*, struct tcpheader*, unsigned int, unsigned char, unsigned int);
 
-/* This server program is designed to take a filename as the first command line argument and a port number as a second.
+/* Port number can be passed as command line argument.
  *
  */
 int main(int argc, char *argv[])
 {
 	
-	/* Code to get date/time.
+	/* Code to get date/time. Note used in current version
 	 *
 	 * -time_t is an arithmetic type variable that stores the time in seconds.
 	 * -The function localtime() takes a time_t pointer variable and takes the data from there and puts it into a struct tm.
@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
 	strftime(s, sizeof(s), "%c", tm);
 
 	
-	/* Code to set up socket that server will listen for connections from.
+	/* Code to set up socket that server will listen for connections from and to begin connection.
 	 *
 	 * -For socket function, first parameter is for address family (AF_INET for IPv4, AF_INET6 for IPv6), second parameter is for communication type
 	 * (SOCK_STREAM for TCP, SOCK_DGRAM for UDP), and the third parameter is the protocol number, in which '0' is the default for TCP.
@@ -44,29 +44,29 @@ int main(int argc, char *argv[])
 	 * -The socket() function creates the socket, creating the sockaddr_in struct and assigning its variables creates the socket infromation,
 	 *  and the bind function combines the two to create the working socket.
 	 */
+	int portNumber = 45000;
+	if (argc != 1)
+	{
+		portNumber = atoi(argv[0]);
+	}
 	int server_socket, client_socket;
 	server_socket = socket(AF_INET, SOCK_STREAM, 0);	
 	if (server_socket < 0)
 	{
 		perror("Error opening server socket.");
-	}
-	
+	}	
 	struct sockaddr_in server_address, client_address;
 	server_address.sin_family = AF_INET;
-	server_address.sin_port = htons(45000);	
+	server_address.sin_port = htons(portNumber);	
 	server_address.sin_addr.s_addr = INADDR_ANY; //INADDR_ANY binds socket to all available interfaces,
 	//inet_aton("128.171.24.203", server_address.sin_addr);
 	int bindTest = bind(server_socket, (struct sockaddr*) &server_address, sizeof(server_address));	
 	if (bindTest < 0)
 	{
 		perror("Error binding server socket.");
-	}
-	
-	
+	}		
 	listen(server_socket, 5);
-	printf("Waiting for connections...\n\n");
-	
-		
+	printf("Waiting for connections...\n\n");			
 	int client_length;
 	client_socket = accept(server_socket, (struct sockaddr *) &client_address, &client_length);
 	if (client_socket < 0)
@@ -75,38 +75,40 @@ int main(int argc, char *argv[])
 	}
 	
 	
-	//Begin TCP handshake section.
-	
+	//Begin TCP handshake section.	
 	struct tcpheader received, toBeSent;
 	struct tcpheader *a = &received;
 	struct tcpheader *b = &toBeSent;
 
 	read(client_socket, a, sizeof(received));	
 	receivedPacket(a);
-	responsePacket(a, &toBeSent, rand() % 10001, (unsigned char) 10, (unsigned int) 0);
+	responsePacket(a, &toBeSent, rand() % 10001, (unsigned char) 18, (unsigned int) 0);
 	sentPacket(&toBeSent);
 
 		
 	write(client_socket, &toBeSent, sizeof(toBeSent));
 	bzero(a, sizeof(received));
 	read(client_socket, a, sizeof(received));
-	receivedPacket(a);
-	
-	
+	receivedPacket(a);		
 	//End TCP handshake section.
 	
 	
 	
-	/*
+	/* This part of the code works by sending the TCP packet in two parts. First the binary data from the jpg is sent, then the accompanying
+	 * header (each iteration would be one packet). Error checking is handled by the loop not iterating again until the proper acknowledgement
+	 * is received. The only thing not implemented having the buffer as an Linked List.
 	 *
 	 *
 	 * Notes of interest to self...
-	 * -originally we had the while condition as "(fread(buffer,1,1500,openJPG) == 1500)" and it looked like the program was working ok,
+	 * A) originally we had the while condition as "(fread(buffer,1,1500,openJPG) == 1500)" and it looked like the program was working ok,
 	 * as the new.jpg was readable and looked exactly like the original bday_pic.jpg after transfer, but logically the server wouldn't have
 	 * written the last part of the binary data as the fread() function would of returned something less than 1500 except in the unlikely 
 	 * occassion the very last section of data to read was exactly 1500 bytes. Using a sha256 digest of the old and new file proved that
 	 * although they looked the same they weren't (openssl dgst -sha256 filename.jpg). Regardless though, even after correcting for what
 	 * should have been the missing end of the file the hash was still different.
+	 * 	a) This issue was fixed after a modification on the client side. The client was writing bytes to the file equal to the size of 
+	 *		the buffer where the binary data was stored originally, but after changing to the number of bytes actually received, SHA256
+	 *		hash was the same.
 	 */
 	FILE *openJPG;
 	char buffer[1500];
@@ -117,7 +119,7 @@ int main(int argc, char *argv[])
 	{
 		write(client_socket, buffer, readInput);
 		bzero(b, sizeof(toBeSent));
-		responsePacket(a, &toBeSent, seqNew, (unsigned char) 2, (unsigned int) 0);
+		responsePacket(a, &toBeSent, seqNew, (unsigned char) 16, (unsigned int) 0);
 		sentPacket(&toBeSent);
 		write(client_socket, &toBeSent, sizeof(toBeSent));
 		seqNew = seqNew + readInput;
@@ -128,12 +130,28 @@ int main(int argc, char *argv[])
 			//This literally does nothing, only exists to loop until it receives an ack that is expects
 		}
 		receivedPacket(a);
-		readInput = fread(buffer,1,1500,openJPG);
-		
+		readInput = fread(buffer,1,1500,openJPG);		
 	}
 	char end[4] = "end";
 	write(client_socket,end,4);
 	
+	
+	//Begin closing handshake.	
+	bzero(b, sizeof(toBeSent));
+	responsePacket(a, &toBeSent, seqNew, (unsigned char) 1, (unsigned int) 0);
+	sentPacket(&toBeSent);
+	write(client_socket, &toBeSent, sizeof(toBeSent));
+	bzero(a, sizeof(received));
+	read(client_socket, a, sizeof(received));
+	while ((*a).controlFlags != 17)
+	{
+			//This literally does nothing, only exists to loop until it receives an FIN/ACK
+	}
+	receivedPacket(a);
+	responsePacket(a, &toBeSent, seqNew, (unsigned char) 16, (unsigned int) 0);
+	sentPacket(&toBeSent);
+	write(client_socket, &toBeSent, sizeof(toBeSent));	
+	//End closing handshake.
 
 	fclose(openJPG);
 	close(server_socket);
